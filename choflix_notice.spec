@@ -17,6 +17,55 @@ ONEFILE = os.environ.get("ONEFILE", "").strip() not in ("", "0", "false", "False
 root = Path(SPECPATH)
 icon_file = root / "assets" / "icon.ico"
 
+
+def _app_version() -> str:
+    """choflix/__init__.py 의 APP_VERSION 을 읽는다 (import 없이)."""
+    text = (root / "choflix" / "__init__.py").read_text(encoding="utf-8")
+    for line in text.splitlines():
+        if line.startswith("APP_VERSION"):
+            return line.split("=", 1)[1].strip().strip('"\'')
+    return "0.0.0"
+
+
+def _write_version_resource() -> str | None:
+    """윈도우 exe 의 '파일 속성 > 자세히' 에 들어갈 버전 정보를 만든다.
+
+    GUI 로 빌드하면(console=False) exe 에 stdout 이 없어 --version 으로
+    버전을 확인할 수 없다. 그래서 PE 리소스에 심어 두고 그걸로 확인한다.
+    """
+    if os.name != "nt":
+        return None
+    version = _app_version()
+    parts = (version.split(".") + ["0", "0", "0", "0"])[:4]
+    nums = ", ".join(str(int(x) if x.isdigit() else 0) for x in parts)
+    out_dir = root / "build"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = out_dir / "version_info.txt"
+    target.write_text(
+        "VSVersionInfo(\n"
+        f"  ffi=FixedFileInfo(filevers=({nums}), prodvers=({nums}),\n"
+        "    mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),\n"
+        "  kids=[\n"
+        "    StringFileInfo([StringTable('041204B0', [\n"
+        "      StringStruct('CompanyName', 'fmj96'),\n"
+        "      StringStruct('FileDescription', 'Choflix Notice - audio notice scheduler'),\n"
+        f"      StringStruct('FileVersion', '{version}'),\n"
+        "      StringStruct('InternalName', 'ChoflixNotice'),\n"
+        "      StringStruct('LegalCopyright', '(c) 2026 fmj96'),\n"
+        "      StringStruct('OriginalFilename', 'ChoflixNotice.exe'),\n"
+        "      StringStruct('ProductName', 'Choflix Notice'),\n"
+        f"      StringStruct('ProductVersion', '{version}'),\n"
+        "    ])]),\n"
+        "    VarFileInfo([VarStruct('Translation', [0x0412, 1200])]),\n"
+        "  ],\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    return str(target)
+
+
+version_file = _write_version_resource()
+
 datas = [
     (str(root / "assets" / "chime.wav"), "assets"),
     (str(root / "assets" / "icon.ico"), "assets"),
@@ -65,6 +114,7 @@ exe_kwargs = dict(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(icon_file) if icon_file.exists() else None,
+    version=version_file,
 )
 
 if ONEFILE:
