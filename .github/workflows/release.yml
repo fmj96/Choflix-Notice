@@ -78,13 +78,35 @@ jobs:
             if (-not (Test-Path $f)) { Write-Error "$f 가 번들에 없습니다."; exit 1 }
           }
 
-          # 핵심 의존성이 실제로 담겼는지 (하나라도 빠지면 실행 시점에야 터진다)
-          foreach ($pat in @("_internal\PySide6\QtCore.pyd", "_internal\PySide6\QtWidgets.pyd",
-                             "_internal\numpy", "_internal\_sounddevice_data", "_internal\soundfile*")) {
-            if (-not (Get-ChildItem "dist\ChoflixNotice\$pat" -ErrorAction SilentlyContinue)) {
-              Write-Error "번들에 $pat 가 없습니다."; exit 1
+          # 번들 구조를 먼저 찍어 둔다. 실패했을 때 로그만 보고 원인을 알 수 있어야 한다.
+          Write-Host "`n--- _internal 최상위 ---"
+          Get-ChildItem "dist\ChoflixNotice\_internal" | Select-Object -First 40 |
+            ForEach-Object { Write-Host ("  {0}{1}" -f $_.Name, $(if ($_.PSIsContainer) {"\"} else {""})) }
+
+          # 핵심 의존성이 실제로 담겼는지. 경로를 못 박으면 PyInstaller 가 배치를
+          # 바꿀 때마다 깨지므로, 특징적인 파일명을 재귀로 찾는다.
+          # 하나라도 빠지면 실행 시점에야 터진다.
+          $need = @{
+            "Qt 코어"        = "QtCore*";
+            "Qt 위젯"        = "QtWidgets*";
+            "libsndfile(음원 디코딩)" = "*sndfile*";
+            "portaudio(오디오 출력)"  = "*portaudio*";
+          }
+          $bad = $false
+          foreach ($k in $need.Keys) {
+            $hit = Get-ChildItem "dist\ChoflixNotice" -Recurse -Filter $need[$k] -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+            if ($hit) {
+              Write-Host ("  OK   {0}: {1}" -f $k, $hit.Name)
+            } else {
+              Write-Host ("  없음 {0}: {1} 패턴에 맞는 파일 없음" -f $k, $need[$k])
+              $bad = $true
             }
           }
+          if (-not (Get-ChildItem "dist\ChoflixNotice\_internal\numpy" -ErrorAction SilentlyContinue)) {
+            Write-Host "  없음 numpy 폴더"; $bad = $true
+          } else { Write-Host "  OK   numpy" }
+          if ($bad) { Write-Error "번들에 필요한 구성 요소가 빠졌습니다."; exit 1 }
 
           $size = (Get-ChildItem "dist\ChoflixNotice" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
           "번들 확인 완료 ({0:N0} MB)" -f $size | Write-Host
