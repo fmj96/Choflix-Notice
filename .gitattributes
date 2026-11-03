@@ -1,0 +1,12 @@
+# cmd.exe requires CRLF in batch files
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# everything else stays LF
+*.py text eol=lf
+*.spec text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.wav binary
+*.ico binary
+*.png binary

@@ -1,0 +1,128 @@
+name: Windows 빌드 및 릴리스
+
+# 태그(v1.5.0 등)를 올리면 릴리스까지 자동으로 만들고,
+# 손으로 실행하면 빌드만 해서 결과물을 아티팩트로 남긴다.
+# 태그 없이 먼저 돌려보고 확인한 뒤 태그를 올리는 흐름을 권장한다.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 버전 읽기
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path choflix/__init__.py -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "APP_VERSION = $v"
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $tag = $env:GITHUB_REF -replace '^refs/tags/v', ''
+            if ($tag -ne $v) {
+              # 태그와 코드의 버전이 다르면 어느 쪽이 맞는지 알 수 없다. 여기서 멈춘다.
+              Write-Error "태그(v$tag)와 choflix/__init__.py 의 버전($v)이 다릅니다."
+              exit 1
+            }
+          }
+
+      - name: 패키지 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: 리소스 생성 (차임, 아이콘)
+        run: |
+          python tools/make_chime.py
+          python tools/make_icon.py
+
+      - name: 애플리케이션 빌드
+        run: python -m PyInstaller --noconfirm --clean choflix_notice.spec
+
+      - name: 빌드 결과 확인
+        shell: pwsh
+        run: |
+          $exe = "dist\ChoflixNotice\ChoflixNotice.exe"
+          if (-not (Test-Path $exe)) { Write-Error "$exe 가 만들어지지 않았습니다."; exit 1 }
+          # --version 은 Qt 창을 띄우지 않고 바로 끝나므로 CI 에서도 안전하다
+          $out = & $exe --version 2>&1
+          Write-Host "실행 확인: $out"
+          if ($LASTEXITCODE -ne 0) { Write-Error "실행 파일이 정상 종료하지 않았습니다."; exit 1 }
+          if ($out -notmatch [regex]::Escape("${{ steps.ver.outputs.version }}")) {
+            Write-Error "버전이 일치하지 않습니다: $out"; exit 1
+          }
+          foreach ($f in @("dist\ChoflixNotice\_internal\assets\chime.wav",
+                           "dist\ChoflixNotice\_internal\assets\icon.ico")) {
+            if (-not (Test-Path $f)) { Write-Error "$f 가 번들에 없습니다."; exit 1 }
+          }
+          Write-Host "번들 리소스 확인 완료"
+
+      - name: NSIS 설치
+        run: choco install nsis --no-progress -y
+
+      - name: 설치 프로그램 만들기
+        shell: pwsh
+        run: |
+          $nsis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          if (-not (Test-Path $nsis)) { $nsis = "makensis" }
+          & $nsis /V3 /DVERSION=${{ steps.ver.outputs.version }} `
+                  /DSOURCE_DIR=..\dist\ChoflixNotice installer\choflix.nsi
+          if ($LASTEXITCODE -ne 0) { Write-Error "NSIS 빌드 실패"; exit 1 }
+          $setup = "ChoflixNotice-Setup-${{ steps.ver.outputs.version }}.exe"
+          if (-not (Test-Path $setup)) { Write-Error "$setup 가 만들어지지 않았습니다."; exit 1 }
+          "{0}  ({1:N1} MB)" -f $setup, ((Get-Item $setup).Length / 1MB) | Write-Host
+
+      - name: 포터블 zip 만들기
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\ChoflixNotice\* `
+            -DestinationPath "ChoflixNotice-${{ steps.ver.outputs.version }}-portable.zip" -Force
+
+      - name: 아티팩트 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChoflixNotice-${{ steps.ver.outputs.version }}
+          path: |
+            ChoflixNotice-Setup-*.exe
+            ChoflixNotice-*-portable.zip
+          retention-days: 14
+
+      - name: 릴리스 생성
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Choflix Notice ${{ steps.ver.outputs.version }}
+          draft: false
+          generate_release_notes: true
+          files: |
+            ChoflixNotice-Setup-*.exe
+            ChoflixNotice-*-portable.zip
+          body: |
+            ## 설치
+
+            **`ChoflixNotice-Setup-${{ steps.ver.outputs.version }}.exe`** 를 받아 실행하세요.
+            관리자 권한이 필요 없고, 파이썬을 따로 설치하지 않아도 됩니다.
+
+            설치 없이 쓰려면 `ChoflixNotice-${{ steps.ver.outputs.version }}-portable.zip`
+            을 풀어 `ChoflixNotice.exe` 를 실행하면 됩니다.
+
+            예약 목록과 설정은 `%APPDATA%\ChoflixNotice\` 에 저장되므로
+            덮어 설치해도 기존 예약은 그대로 유지됩니다.
+
+            > 서명되지 않은 프로그램이라 윈도우 SmartScreen 경고가 나올 수 있습니다.
+            > `추가 정보` → `실행`을 누르면 됩니다.
+
+            자세한 사용법은 [README](https://github.com/fmj96/Choflix-Notice#readme) 를 보세요.

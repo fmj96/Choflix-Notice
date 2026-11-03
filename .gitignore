@@ -1,0 +1,21 @@
+# 파이썬
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# 빌드 산출물
+build/
+dist/
+*.manifest
+ChoflixNotice-Setup-*.exe
+ChoflixNotice-*-portable.zip
+wheels/
+
+# 생성되는 리소스 (tools/make_*.py 로 다시 만들 수 있음)
+assets/icon.png
+
+# OS
+.DS_Store
+Thumbs.db

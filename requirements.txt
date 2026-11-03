@@ -1,0 +1,9 @@
+# 실행에 필요한 패키지
+# Addons(QtWebEngine, QtCharts 등)는 쓰지 않으므로 Essentials 만 받는다.
+# 내려받는 양이 절반 이하로 줄고 빌드 결과물도 가벼워진다.
+PySide6-Essentials>=6.6.0
+numpy>=1.24
+sounddevice>=0.4.6
+soundfile>=0.12.1
+
+# 빌드에만 필요 (pip install -r requirements-build.txt)
