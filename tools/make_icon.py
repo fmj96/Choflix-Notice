@@ -22,6 +22,18 @@ from choflix.ui.widgets import app_pixmap                  # noqa: E402
 SIZES = [16, 24, 32, 48, 64, 128, 256]
 
 
+def _make_output_safe() -> None:
+    """콘솔 코드페이지가 한글을 못 담아도 죽지 않게 한다.
+
+    영문 윈도우(cp1252)나 CI 러너에서 한글을 그대로 print 하면
+    UnicodeEncodeError 로 멈춘다. 깨져 보이더라도 작업은 끝나야 한다.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
 def png_bytes(size: int) -> bytes:
     store = QByteArray()                # QBuffer 가 참조하므로 살려 둬야 한다
     buffer = QBuffer(store)
@@ -48,6 +60,7 @@ def build_ico(images: list[tuple[int, bytes]]) -> bytes:
 
 
 def main() -> int:
+    _make_output_safe()
     QApplication([])
     images = [(size, png_bytes(size)) for size in SIZES]
 

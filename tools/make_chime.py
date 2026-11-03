@@ -16,6 +16,18 @@ NOTES = [(783.99, 0.0), (523.25, 0.45)]     # G5 → C5, 학교 종소리와 비
 DURATION = 1.6
 
 
+def _make_output_safe() -> None:
+    """콘솔 코드페이지가 한글을 못 담아도 죽지 않게 한다.
+
+    영문 윈도우(cp1252)나 CI 러너에서 한글을 그대로 print 하면
+    UnicodeEncodeError 로 멈춘다. 깨져 보이더라도 작업은 끝나야 한다.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
 def bell(freq: float, start: float, length: float = 1.1) -> np.ndarray:
     """감쇠하는 배음 몇 개를 겹쳐 종소리 비슷한 음색을 만든다."""
     n = int(RATE * length)
@@ -35,6 +47,7 @@ def bell(freq: float, start: float, length: float = 1.1) -> np.ndarray:
 
 
 def main() -> int:
+    _make_output_safe()
     mix = sum(bell(freq, start) for freq, start in NOTES)
     mix /= np.max(np.abs(mix)) or 1.0
     mix *= 0.85

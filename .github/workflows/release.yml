@@ -16,6 +16,12 @@ jobs:
   build:
     runs-on: windows-latest
 
+    # 영문 윈도우 러너의 기본 출력 인코딩은 cp1252 라 한글을 못 담는다.
+    # 스크립트에도 방어 코드가 있지만, 여기서 한 번 더 막아 둔다.
+    env:
+      PYTHONIOENCODING: "utf-8"
+      PYTHONUTF8: "1"
+
     steps:
       - uses: actions/checkout@v4
 
